@@ -39,7 +39,6 @@ Java_com_ff_gifplayer_GifHandler_loadPath(JNIEnv *env, jobject instance, jstring
     gifBean->delays = static_cast<int *>(malloc(sizeof(int) * gifFileType->ImageCount));
     memset(gifBean->delays, 0, sizeof(int) * gifFileType->ImageCount);
 
-
     gifBean->current_frame = 0;
     gifBean->total_frame = gifFileType->ImageCount;
 
@@ -121,20 +120,15 @@ void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo inf
         colorMapObject = gifFileType->SColorMap;
     }
 
-    // 待渲染的图片首地址，向下偏移
+    // 1. 待渲染的图片首地址，先向下偏移
     // stride是字节数，pixels需要强转为char指针才可以一字节一字节的相加
     // 如果使用int指针，4个字节，如果加的不是4的整数倍，会出异常
     int *px = (int *) ((char *) pixels + info.stride * frameInfo.Top);
-    // TODO 为什么待渲染的图片首地址不向右偏移？目前找到的gif都是从0,0坐标开始的，并未验证出问题
-    /*int *px = (int *) ((char *) pixels + (info.stride + frameInfo.Left) * frameInfo.Top +
-                        frameInfo.Left);*/
-
-    // 每一行的首地址，可以不用引入该变量，但是为了更加清晰，所以使用中间变量
-    int *line;
 
     // 绘制的区域并不是0,0坐标开始，要取gif的边界区域
     for (int y = frameInfo.Top; y < frameInfo.Top + frameInfo.Height; ++y) {
-        line = px;// 当前行首地址
+
+        // 2. 在 x = frameInfo.Left 这里向右偏移
         for (int x = frameInfo.Left; x < frameInfo.Left + frameInfo.Width; ++x) {
 
             // 拿到每一个坐标位置的索引值，索引值从0开始，而坐标是有偏移的，所以计算公式如下
@@ -146,10 +140,11 @@ void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo inf
             // 解压数据，从字典中取出RGB
             gifColorType = colorMapObject->Colors[gifByteType];
 
-            // 渲染当前行的每一个坐标的颜色，注意GIF，不能处理透明度，并且是 B G R 的顺序
-            line[x] = argb(255, gifColorType.Red, gifColorType.Green, gifColorType.Blue);
+            // 3. 渲染当前行的每一个坐标的颜色（该坐标是已经是向下、向右偏移后的）
+            // 注意GIF，首先，不能处理透明度，默认给255不透明；其次，是 B G R 的顺序
+            px[x] = argb(255, gifColorType.Red, gifColorType.Green, gifColorType.Blue);
         }
-        // 切换到下一行首地址，与上面一样，需要先转为char指针再相加
+        // 4. 切换到下一行首地址，与上面一样，需要先转为char指针再相加
         px = (int *) ((char *) px + info.stride);
     }
 }
