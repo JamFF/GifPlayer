@@ -99,6 +99,10 @@ Java_com_ff_gifplayer_GifHandler_getProgress(JNIEnv *env, jobject instance, jlon
 
 /**
  * 绘制一张图片
+ * @param gifFileType   保存gif图片信息的结构体
+ * @param gifBean       保存gif图片帧信息的结构体
+ * @param info          用来渲染gif图片的bitmap的信息
+ * @param pixels        需要渲染的gif图片的首地址
  */
 void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo info, void *pixels) {
 
@@ -112,13 +116,25 @@ void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo inf
     GifColorType gifColorType;// 解压数据，里面存储着RGB
     // 当前帧的字典，RGB数据，压缩工具
     ColorMapObject *colorMapObject = frameInfo.ColorMap;
+    if (colorMapObject == nullptr) {
+        // 有些gif的GifImageDesc中没有ColorMap，那么就要从GifFileType里面取
+        colorMapObject = gifFileType->SColorMap;
+    }
 
-    // TODO 待渲染的图片首地址，向下偏移，char地址与int相加？为什不向右偏移？
+    // 待渲染的图片首地址，向下偏移
+    // stride是字节数，pixels需要强转为char指针才可以一字节一字节的相加
+    // 如果使用int指针，4个字节，如果加的不是4的整数倍，会出异常
     int *px = (int *) ((char *) pixels + info.stride * frameInfo.Top);
-    // int *px = (int *) pixels + info.stride * frameInfo.Top;
+    // TODO 为什么待渲染的图片首地址不向右偏移？目前找到的gif都是从0,0坐标开始的，并未验证出问题
+    /*int *px = (int *) ((char *) pixels + (info.stride + frameInfo.Left) * frameInfo.Top +
+                        frameInfo.Left);*/
+
+    // 每一行的首地址，可以不用引入该变量，但是为了更加清晰，所以使用中间变量
+    int *line;
 
     // 绘制的区域并不是0,0坐标开始，要取gif的边界区域
     for (int y = frameInfo.Top; y < frameInfo.Top + frameInfo.Height; ++y) {
+        line = px;// 当前行首地址
         for (int x = frameInfo.Left; x < frameInfo.Left + frameInfo.Width; ++x) {
 
             // 拿到每一个坐标位置的索引值，索引值从0开始，而坐标是有偏移的，所以计算公式如下
@@ -131,11 +147,10 @@ void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo inf
             gifColorType = colorMapObject->Colors[gifByteType];
 
             // 渲染当前行的每一个坐标的颜色，注意GIF，不能处理透明度，并且是 B G R 的顺序
-            px[x] = argb(255, gifColorType.Red, gifColorType.Green, gifColorType.Blue);
+            line[x] = argb(255, gifColorType.Red, gifColorType.Green, gifColorType.Blue);
         }
-        // TODO 下一行首地址，char地址与int相加？
+        // 切换到下一行首地址，与上面一样，需要先转为char指针再相加
         px = (int *) ((char *) px + info.stride);
-        // px = px + info.stride;
     }
 }
 
@@ -149,9 +164,9 @@ Java_com_ff_gifplayer_GifHandler_updateFrame(JNIEnv *env, jobject instance, jlon
     auto *gifBean = static_cast<GifBean *>(gifFileType->UserData);
 
     AndroidBitmapInfo info;
-    AndroidBitmap_getInfo(env, bitmap, &info);
+    AndroidBitmap_getInfo(env, bitmap, &info);// 为bitmap创建信息
 
-    // 代表一幅图片的像素数组
+    // 代表一幅图片的像素数组，也是整幅图片的首地址
     void *pixels;
 
     // 锁定bitmap，一幅图片-->二维数组
